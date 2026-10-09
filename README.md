@@ -54,23 +54,23 @@ sce_sys/icon0.png иконка приложения 512×512
 gfx_src/          исходники графики (PSD)
 ```
 
-Не входят в репозиторий (берутся из OpenOrbis): `Makefile`, `sce_module/`, `sce_sys/about/`.
+Не входят в репозиторий (берутся из OpenOrbis): `sce_module/`, `sce_sys/about/`.
 
 ## Сборка
 
 Нужен [OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) и переменная `OO_PS4_TOOLCHAIN`.
 
-Параметры Makefile:
+Параметры в `Makefile`:
 
 ```make
-TITLE      := PS4 Torrent Client
+TITLE      := ps4torrent client
 TITLE_ID   := BREW00088
 CONTENT_ID := IV0000-BREW00088_00-PS4TC00000000000   # ровно 36 символов
 LIBS       := -lc -lkernel -lc++ -lSceNet -lSceVideoOut -lSceSysmodule -lSceFreeType -lScePad -lSceUserService
 EXTRAFLAGS := -O2
 ```
 
-Для `PkgTool.Core` используйте `--paid 0x3800000000000011`; если dotnet новее нужного, поможет `DOTNET_ROLL_FORWARD=LatestMajor`. Затем `make` и установка получившегося `.pkg` на консоль.
+Для `create-fself` в Makefile задан `--paid`; если dotnet новее нужного, поможет `DOTNET_ROLL_FORWARD=LatestMajor`. Затем `make` и установка получившегося `.pkg` на консоль.
 
 ## Настройка
 
