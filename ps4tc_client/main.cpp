@@ -10,6 +10,10 @@
 #include "api.h"
 #include "ui.h"
 
+// Системная заставка запуска (sce_sys/pic1.png) остаётся поверх приложения,
+// пока оно само её не уберёт. Вызываем после первого нарисованного кадра.
+extern "C" int sceSystemServiceHideSplashScreen(void);
+
 static const char* CONFIG_FILE = "/data/ps4tc_client/config.txt";
 
 ServerStatus g_status;
@@ -64,8 +68,14 @@ int main()
 
     ui_init();   // если экран не поднялся, приложение всё равно продолжает работать (видно по логу)
 
+    bool splashHidden = false;
     for (;;) {
         ui_pump();
+        if (!splashHidden) {
+            splashHidden = true;
+            int r = sceSystemServiceHideSplashScreen();
+            logf_("sceSystemServiceHideSplashScreen = 0x%08X", (unsigned)r);
+        }
         sceKernelUsleep(30000);
     }
 

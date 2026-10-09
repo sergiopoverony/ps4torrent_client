@@ -408,7 +408,7 @@ static void draw_all()
     put_center(FRAME_WIDTH / 2, "Up/Down - select   Cross - pause/resume   Triangle - remove",
                HINT_BASELINE, C_DIM, C_BG);
 
-    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.5.2.3 Created by SergioPoverony and Mr.Claude",
+    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.5.2.4 Created by SergioPoverony and Mr.Claude",
                CREDIT_BASELINE, C_DIMMER, C_BG);
 
     draw_modal();

@@ -67,7 +67,7 @@ gfx_src/          исходники графики (PSD)
 TITLE      := ps4torrent client
 TITLE_ID   := BREW00088
 CONTENT_ID := IV0000-BREW00088_00-PS4TC00000000000   # ровно 36 символов
-LIBS       := -lc -lkernel -lc++ -lSceNet -lSceVideoOut -lSceSysmodule -lSceFreeType -lScePad -lSceUserService
+LIBS       := -lc -lkernel -lc++ -lSceNet -lSceVideoOut -lSceSysmodule -lSceFreeType -lScePad -lSceUserService -lSceSystemService
 EXTRAFLAGS := -O2
 ```
 
