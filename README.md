@@ -93,4 +93,9 @@ token=
 
 Шрифт DejaVu Sans Mono — см. `assets/fonts/LICENSE-DejaVu.txt`. PNG разбирается через stb_image (public domain).
 
+License
+Copyright (C) 2026 SergioPoverony and Mr.Claude.
+
+Licensed under the GNU General Public License v3.0 (see LICENSE). Anyone may use, modify and redistribute it; the copyright notice must be kept, and modified versions must be released under the same license with source code.
+
 Created by SergioPoverony and Mr.Claude.
