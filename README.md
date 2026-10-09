@@ -51,6 +51,7 @@ ps4tc_client/     исходники (C++)
 assets/fonts/     DejaVuSansMono.ttf (лицензия рядом)
 assets/images/    title.png — баннер в интерфейсе
 sce_sys/icon0.png иконка приложения 512×512
+sce_sys/pic1.png  фон при запуске (1920×1080)
 gfx_src/          исходники графики (PSD)
 ```
 
