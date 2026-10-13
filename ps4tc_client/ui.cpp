@@ -340,40 +340,42 @@ static void draw_image(const Image& img, int dstX, int dstY, int dstW, int dstH,
 static std::string fmt_size(uint64_t b)
 {
     char buf[40];
-    if (b >= 1073741824ULL)      snprintf(buf, sizeof(buf), "%.1fGB", b / 1073741824.0);
-    else if (b >= 1048576ULL)    snprintf(buf, sizeof(buf), "%.1f MB", b / 1048576.0);
-    else if (b >= 1024ULL)       snprintf(buf, sizeof(buf), "%.0f KB", b / 1024.0);
-    else                         snprintf(buf, sizeof(buf), "%llu B", (unsigned long long)b);
-    return buf;
+    if (b >= 1073741824ULL)      snprintf(buf, sizeof(buf), "%.1f", b / 1073741824.0);
+    else if (b >= 1048576ULL)    snprintf(buf, sizeof(buf), "%.1f", b / 1048576.0);
+    else if (b >= 1024ULL)       snprintf(buf, sizeof(buf), "%.0f", b / 1024.0);
+    else                         snprintf(buf, sizeof(buf), "%llu", (unsigned long long)b);
+    if (b >= 1073741824ULL)      return std::string(buf) + tr("tc_u_gb", "GB");      // гигабайты вплотную к числу
+    if (b >= 1048576ULL)         return std::string(buf) + " " + tr("tc_u_mb", "MB");
+    if (b >= 1024ULL)            return std::string(buf) + " " + tr("tc_u_kb", "KB");
+    return std::string(buf) + " " + tr("tc_u_b", "B");
 }
 
 static std::string fmt_speed(int kbps)
 {
     char buf[40];
-    if (kbps >= 1024) snprintf(buf, sizeof(buf), "%.1f MB/s", kbps / 1024.0);
-    else              snprintf(buf, sizeof(buf), "%d KB/s", kbps);
-    return buf;
+    if (kbps >= 1024) { snprintf(buf, sizeof(buf), "%.1f", kbps / 1024.0); return std::string(buf) + " " + tr("tc_u_mbs", "MB/s"); }
+    snprintf(buf, sizeof(buf), "%d", kbps);
+    return std::string(buf) + " " + tr("tc_u_kbs", "KB/s");
 }
 
 static std::string fmt_eta(long long s)
 {
     if (s <= 0) return "-";   // неизвестно, или уже готово (статус и так это покажет)
-    char buf[32];
-    if (s < 3600) snprintf(buf, sizeof(buf), "%lldm", s / 60 + (s % 60 ? 1 : 0));
-    else if (s < 86400) snprintf(buf, sizeof(buf), "%lldh%lldm", s / 3600, (s % 3600) / 60);
-    else snprintf(buf, sizeof(buf), "%lldd", s / 86400);
-    return buf;
+    std::string h = tr("tc_u_h", "h"), m = tr("tc_u_m", "m"), d = tr("tc_u_d", "d");
+    if (s < 3600)  return std::to_string(s / 60 + (s % 60 ? 1 : 0)) + m;
+    if (s < 86400) return std::to_string(s / 3600) + h + std::to_string((s % 3600) / 60) + m;
+    return std::to_string(s / 86400) + d;
 }
 
 static std::string status_label(const std::string& s)
 {
-    if (s == "checking")    return "checking";
-    if (s == "downloading") return "downloading";
-    if (s == "paused")      return "paused";
-    if (s == "complete")    return "complete";
-    if (s == "offline")     return "drive gone";
-    if (s == "waiting")     return "waiting";
-    if (s == "queued")      return "queued";
+    if (s == "checking")    return tr("tc_st_checking", "checking");
+    if (s == "downloading") return tr("tc_st_downloading", "downloading");
+    if (s == "paused")      return tr("tc_st_paused", "paused");
+    if (s == "complete")    return tr("tc_st_complete", "complete");
+    if (s == "offline")     return tr("tc_st_offline", "drive gone");
+    if (s == "waiting")     return tr("tc_st_waiting", "waiting");
+    if (s == "queued")      return tr("tc_st_queued", "queued");
     return s;
 }
 
@@ -476,8 +478,8 @@ static void draw_quit_modal()
 {
     const int W = 1200;
     int maxChars = (W - 100) / g_cellW;
-    std::vector<std::string> lines = wrap_lines(tr("quit_confirm",
-        "Shut down ps4torrent?\n\nAll downloads will stop (progress is saved). "
+    std::vector<std::string> lines = wrap_lines(tr("tc_quit_desc",
+        "All downloads will stop and progress is saved. "
         "To start it again, send the payload to the console again."), maxChars);
 
     const int LINE_H = 34;
@@ -490,7 +492,8 @@ static void draw_quit_modal()
     int y = y0 + 70 + 20 + 26;
     for (size_t i = 0; i < lines.size(); i++, y += LINE_H)
         put_center(cx, lines[i], y, C_TEXT, C_PANEL);
-    put_center_rich(cx, "{cross} " + tr("btn_quit", "shut down") + "   {circle} cancel", y0 + H - 36, C_AMBER, C_PANEL);
+    put_center_rich(cx, "{cross} " + tr("btn_quit", "shut down") + "   {circle} " + tr("tc_cancel", "cancel"),
+                    y0 + H - 36, C_AMBER, C_PANEL);
 }
 
 static void draw_modal()
@@ -503,10 +506,11 @@ static void draw_modal()
     int cx = FRAME_WIDTH / 2;
     int y0 = (FRAME_HEIGHT - H) / 2;
 
-    put_center(cx, "Remove this torrent?", y0 + 50, C_TEXT, C_PANEL);
+    put_center(cx, fit(tr("tc_remove_title", "Remove this torrent?"), 64), y0 + 50, C_TEXT, C_PANEL);
     put_center(cx, fit(g_modalTitle, 64), y0 + 100, C_DIM, C_PANEL);
-    put_center(cx, "Downloaded files stay on the drive unless you choose to delete them too", y0 + 160, C_AMBER, C_PANEL);
-    put_center_rich(cx, "{cross} remove   {square} remove + files   {circle} cancel", y0 + 230, C_TEXT, C_PANEL);
+    put_center(cx, fit(tr("tc_remove_note", "Downloaded files stay on the drive unless you choose to delete them too"), 74), y0 + 160, C_AMBER, C_PANEL);
+    put_center_rich(cx, "{cross} " + tr("tc_remove", "remove") + "   {square} " + tr("tc_remove_files", "remove + files") + "   {circle} " + tr("tc_cancel", "cancel"),
+                    y0 + 230, C_TEXT, C_PANEL);
 }
 
 static void draw_all()
@@ -538,10 +542,10 @@ static void draw_all()
         std::string line;
         Color lineColor;
         if (cs == CONN_NO_PAYLOAD) {
-            line = "NO PAYLOAD";
+            line = tr("tc_no_payload", "NO PAYLOAD");
             lineColor = C_RED;
         } else if (cs == CONN_NO_INTERNET) {
-            line = "NO INTERNET";
+            line = tr("tc_no_internet", "NO INTERNET");
             lineColor = C_AMBER;
         } else {
             line = g_status.netIp + ":" + std::to_string(g_port);
@@ -555,7 +559,7 @@ static void draw_all()
             const Drive& d = g_status.drives[i];
             if (!line.empty()) line += " | ";
             line += (d.isInternal ? "HDD: " : "USB: ");
-            line += fmt_size(d.freeBytes) + " free";
+            line += fmt_size(d.freeBytes) + " " + tr("tc_free", "free");
         }
 
         line += " | " + fmt_speed(g_status.totalSpeedKB);
@@ -567,16 +571,16 @@ static void draw_all()
     g_scene->FillRect(0, HEADER_Y, FRAME_WIDTH, ROW_H, C_HEAD);
     int hb = HEADER_Y + 25;
     put_right(COL_NUM, W_NUM, "#", hb, C_DIM, C_HEAD);
-    put_left(COL_NAME, "Title", hb, C_DIM, C_HEAD);
-    put_right(COL_SIZE, W_SIZE, "Size", hb, C_DIM, C_HEAD);
-    put_right(COL_DONE, W_DONE, "Done", hb, C_DIM, C_HEAD);
-    put_right(COL_ETA, W_ETA, "ETA", hb, C_DIM, C_HEAD);
-    put_right(COL_SPEED, W_SPEED, "Status", hb, C_DIM, C_HEAD);
-    put_right(COL_PEERS, W_PEERS, "Peers", hb, C_DIM, C_HEAD);
+    put_left(COL_NAME, tr("tc_hdr_title", "Title"), hb, C_DIM, C_HEAD);
+    put_right(COL_SIZE, W_SIZE, tr("tc_hdr_size", "Size"), hb, C_DIM, C_HEAD);
+    put_right(COL_DONE, W_DONE, tr("tc_hdr_done", "Done"), hb, C_DIM, C_HEAD);
+    put_right(COL_ETA, W_ETA, tr("tc_hdr_eta", "ETA"), hb, C_DIM, C_HEAD);
+    put_right(COL_SPEED, W_SPEED, tr("tc_hdr_status", "Status"), hb, C_DIM, C_HEAD);
+    put_right(COL_PEERS, W_PEERS, tr("tc_hdr_peers", "Peers"), hb, C_DIM, C_HEAD);
 
     if (g_status.items.empty()) {
-        const char* msg = g_status.ok ? "No torrents yet. Drop a .torrent on the USB drive or in /data/pkg/torrents"
-                                       : "Waiting for the first reply from ps4torrentd...";
+        std::string msg = g_status.ok ? tr("tc_empty", "No torrents yet. Drop a .torrent on the USB drive or in /data/pkg/torrents")
+                                      : tr("tc_waiting", "Waiting for the first reply from ps4torrentd...");
         put_center(FRAME_WIDTH / 2, msg, 460, C_DIM, C_BG);
     }
 
@@ -590,10 +594,10 @@ static void draw_all()
     static const int CREDIT_BASELINE = HINT_BASELINE + 32;    // 1057: с запасом до низа экрана (1080)
 
     put_center_rich(FRAME_WIDTH / 2,
-                    "{updown} select   {cross} pause/resume   {triangle} remove   {options} " + tr("btn_quit", "shut down"),
+                    "{updown} " + tr("tc_hint_select", "select") + "   {cross} " + tr("tc_hint_toggle", "pause/resume") + "   {triangle} " + tr("tc_hint_remove", "remove") + "   {options} " + tr("btn_quit", "shut down"),
                     HINT_BASELINE, C_DIM, C_BG);
 
-    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.0.2 Created by SergioPoverony and Mr.Claude",
+    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.1.0 Created by SergioPoverony and Mr.Claude",
                CREDIT_BASELINE, C_DIMMER, C_BG);
 
     draw_modal();
