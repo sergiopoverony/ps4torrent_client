@@ -479,8 +479,8 @@ static void draw_quit_modal()
     const int W = 1200;
     int maxChars = (W - 100) / g_cellW;
     std::vector<std::string> lines = wrap_lines(tr("tc_quit_desc",
-        "All downloads will stop and progress is saved. "
-        "To start it again, send the payload to the console again."), maxChars);
+        "All downloads will stop and progress is saved.\n"
+        "The payload will need to be restarted - ps4torrentd.elf"), maxChars);
 
     const int LINE_H = 34;
     int H = 70 + 20 + (int)lines.size() * LINE_H + 40 + 50;
@@ -597,7 +597,7 @@ static void draw_all()
                     "{updown} " + tr("tc_hint_select", "select") + "   {cross} " + tr("tc_hint_toggle", "pause/resume") + "   {triangle} " + tr("tc_hint_remove", "remove") + "   {options} " + tr("btn_quit", "shut down"),
                     HINT_BASELINE, C_DIM, C_BG);
 
-    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.1.0 Created by SergioPoverony and Mr.Claude",
+    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.2.0 Created by SergioPoverony and Mr.Claude",
                CREDIT_BASELINE, C_DIMMER, C_BG);
 
     draw_modal();
