@@ -46,8 +46,8 @@ void i18n_init(const char* assetDir)
     else g_want = "en";
     logf_("i18n: system language id %d (rc 0x%08X) -> %s", id, (unsigned)r, g_want.c_str());
 
-    bool ok = load_bundled(std::string(assetDir) + "/" + g_want + ".json");
-    logf_("i18n: bundled %s.json %s (%d strings)", g_want.c_str(), ok ? "loaded" : "NOT loaded", (int)g_strings.size());
+    bool ok = load_bundled(std::string(assetDir) + "/lang_" + g_want + ".json");
+    logf_("i18n: bundled lang_%s.json %s (%d strings)", g_want.c_str(), ok ? "loaded" : "NOT loaded", (int)g_strings.size());
 }
 
 void i18n_tick(bool serverOk, uint64_t nowUs)
