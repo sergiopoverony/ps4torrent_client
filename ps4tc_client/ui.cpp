@@ -8,6 +8,7 @@
 #include "log.h"
 
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 #include <string>
 #include <vector>
@@ -55,8 +56,6 @@ static const Color C_FILL   = { 81, 171, 236 };    // голубая залив�
 static const Color C_GREEN = { 110, 210, 130 };
 static const Color C_AMBER = { 235, 180,  80 };
 static const Color C_RED   = { 235, 100, 100 };
-static const Color C_BTN   = { 196,  52,  52 };    // красная кнопка выключения
-static const Color C_BTN_HI = { 235,  70,  70 };   // кнопка выключения, когда выделена
 static const Color C_PANEL = { 40,  44,  56 };
 static const Color C_EDGE  = { 110, 120, 150 };
 
@@ -67,7 +66,6 @@ static bool     g_ready = false;
 static bool     g_padOk = false;
 
 static int      g_sel = 0;
-static bool     g_focusQuit = false;   // выделена красная кнопка выключения в шапке
 static int      g_top = 0;
 static int      g_redraw = 2;
 static int      g_frameID = 0;
@@ -152,6 +150,139 @@ static void draw_text(const std::string& s, int x, int baseline, Color fg, Color
             }
         }
         x += (int)(slot->advance.x >> 6);
+    }
+}
+
+// ---------------------------------------------------------------- иконки кнопок геймпада
+// Рисуются кодом (без картинок): Cross, Circle, Square, Triangle, Options (три полоски) и стрелки вверх/вниз.
+// Токены в тексте: {cross} {circle} {square} {triangle} {options} {updown}.
+
+enum Icon { ICON_CROSS, ICON_CIRCLE, ICON_SQUARE, ICON_TRIANGLE, ICON_OPTIONS, ICON_UPDOWN };
+static const int ICON_S = 26;   // сторона иконки в пикселях
+
+static bool in_tri(float px, float py, float ax, float ay, float bx, float by, float cx, float cy)
+{
+    float d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+    float d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+    float d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+    bool neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    bool pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+    return !(neg && pos);
+}
+
+// u, v в диапазоне -1..1 (центр иконки в нуле, v растёт вниз).
+static bool icon_hit(Icon k, float u, float v)
+{
+    switch (k) {
+    case ICON_CIRCLE: {
+        float r = sqrtf(u * u + v * v);
+        return r < 0.88f && r > 0.60f;
+    }
+    case ICON_CROSS: {
+        float a = fabsf(u - v) * 0.7071f, b = fabsf(u + v) * 0.7071f;
+        return fabsf(u) < 0.82f && fabsf(v) < 0.82f && (a < 0.17f || b < 0.17f);
+    }
+    case ICON_SQUARE: {
+        float m = fmaxf(fabsf(u), fabsf(v));
+        return m < 0.80f && m > 0.56f;
+    }
+    case ICON_TRIANGLE:
+        return in_tri(u, v, 0.0f, -0.90f, -0.90f, 0.70f, 0.90f, 0.70f)
+            && !in_tri(u, v, 0.0f, -0.42f, -0.495f, 0.46f, 0.495f, 0.46f);
+    case ICON_OPTIONS:
+        return fabsf(u) < 0.80f && (fabsf(v + 0.55f) < 0.11f || fabsf(v) < 0.11f || fabsf(v - 0.55f) < 0.11f);
+    case ICON_UPDOWN:
+        return in_tri(u, v, 0.0f, -0.95f, -0.60f, -0.15f, 0.60f, -0.15f)
+            || in_tri(u, v, -0.60f, 0.15f, 0.60f, 0.15f, 0.0f, 0.95f);
+    }
+    return false;
+}
+
+static Color icon_color(Icon k)
+{
+    switch (k) {
+    case ICON_CROSS:    { Color c = { 120, 170, 255 }; return c; }   // синий
+    case ICON_CIRCLE:   { Color c = { 255, 100, 100 }; return c; }   // красный
+    case ICON_SQUARE:   { Color c = { 240, 130, 200 }; return c; }   // розовый
+    case ICON_TRIANGLE: { Color c = {  90, 210, 170 }; return c; }   // зелёный
+    default:            { Color c = { 200, 204, 212 }; return c; }
+    }
+}
+
+// top - верхняя граница иконки. Края сглаживаются выборкой 4x4 точки на пиксель.
+static void draw_icon(Icon k, int x, int top, Color bg)
+{
+    Color fg = icon_color(k);
+    for (int py = 0; py < ICON_S; py++) {
+        for (int px = 0; px < ICON_S; px++) {
+            int hit = 0;
+            for (int sy = 0; sy < 4; sy++)
+                for (int sx = 0; sx < 4; sx++) {
+                    float u = ((px + (sx + 0.5f) / 4.0f) / ICON_S) * 2.0f - 1.0f;
+                    float v = ((py + (sy + 0.5f) / 4.0f) / ICON_S) * 2.0f - 1.0f;
+                    if (icon_hit(k, u, v)) hit++;
+                }
+            if (hit == 0) continue;
+            int xx = x + px, yy = top + py;
+            if (xx < 0 || yy < 0 || xx >= FRAME_WIDTH || yy >= FRAME_HEIGHT) continue;
+            Color c;
+            c.r = (uint8_t)((bg.r * (16 - hit) + fg.r * hit) / 16);
+            c.g = (uint8_t)((bg.g * (16 - hit) + fg.g * hit) / 16);
+            c.b = (uint8_t)((bg.b * (16 - hit) + fg.b * hit) / 16);
+            g_scene->PutPixel(xx, yy, c);
+        }
+    }
+}
+
+struct RichTok { bool isIcon; Icon icon; std::string text; };
+
+static bool icon_by_name(const std::string& n, Icon& out)
+{
+    if (n == "cross")    { out = ICON_CROSS;    return true; }
+    if (n == "circle")   { out = ICON_CIRCLE;   return true; }
+    if (n == "square")   { out = ICON_SQUARE;   return true; }
+    if (n == "triangle") { out = ICON_TRIANGLE; return true; }
+    if (n == "options")  { out = ICON_OPTIONS;  return true; }
+    if (n == "updown")   { out = ICON_UPDOWN;   return true; }
+    return false;
+}
+
+static std::vector<RichTok> rich_parse(const std::string& s)
+{
+    std::vector<RichTok> out;
+    std::string cur;
+    size_t i = 0;
+    while (i < s.size()) {
+        if (s[i] == '{') {
+            size_t e = s.find('}', i);
+            Icon k;
+            if (e != std::string::npos && icon_by_name(s.substr(i + 1, e - i - 1), k)) {
+                if (!cur.empty()) { RichTok t; t.isIcon = false; t.icon = ICON_CROSS; t.text = cur; out.push_back(t); cur.clear(); }
+                RichTok t; t.isIcon = true; t.icon = k; out.push_back(t);
+                i = e + 1;
+                continue;
+            }
+        }
+        cur += s[i++];
+    }
+    if (!cur.empty()) { RichTok t; t.isIcon = false; t.icon = ICON_CROSS; t.text = cur; out.push_back(t); }
+    return out;
+}
+
+static int rich_width(const std::vector<RichTok>& toks)
+{
+    int w = 0;
+    for (size_t i = 0; i < toks.size(); i++) w += toks[i].isIcon ? ICON_S : count_cp(toks[i].text) * g_cellW;
+    return w;
+}
+
+static void put_center_rich(int cx, const std::string& s, int baseline, Color fg, Color bg)
+{
+    std::vector<RichTok> toks = rich_parse(s);
+    int x = cx - rich_width(toks) / 2;
+    for (size_t i = 0; i < toks.size(); i++) {
+        if (toks[i].isIcon) { draw_icon(toks[i].icon, x, baseline - 22, bg); x += ICON_S; }
+        else { draw_text(toks[i].text, x, baseline, fg, bg); x += count_cp(toks[i].text) * g_cellW; }
     }
 }
 
@@ -261,7 +392,7 @@ static Color status_color(const std::string& s)
 static void draw_row(int vis, int idx)
 {
     const Item& it = g_status.items[idx];
-    bool selected = (idx == g_sel) && !g_focusQuit;
+    bool selected = (idx == g_sel);
     int top = ROWS_Y + vis * ROW_H;
     Color bg = selected ? C_SEL : ((idx % 2) ? C_ROW2 : C_BG);
     g_scene->FillRect(0, top, FRAME_WIDTH, ROW_H, bg);
@@ -359,7 +490,7 @@ static void draw_quit_modal()
     int y = y0 + 70 + 20 + 26;
     for (size_t i = 0; i < lines.size(); i++, y += LINE_H)
         put_center(cx, lines[i], y, C_TEXT, C_PANEL);
-    put_center(cx, "[Cross] " + tr("btn_quit", "shut down") + "   [Circle] cancel", y0 + H - 36, C_AMBER, C_PANEL);
+    put_center_rich(cx, "{cross} " + tr("btn_quit", "shut down") + "   {circle} cancel", y0 + H - 36, C_AMBER, C_PANEL);
 }
 
 static void draw_modal()
@@ -375,7 +506,7 @@ static void draw_modal()
     put_center(cx, "Remove this torrent?", y0 + 50, C_TEXT, C_PANEL);
     put_center(cx, fit(g_modalTitle, 64), y0 + 100, C_DIM, C_PANEL);
     put_center(cx, "Downloaded files stay on the drive unless you choose to delete them too", y0 + 160, C_AMBER, C_PANEL);
-    put_center(cx, "[Cross] remove   [Square] remove + files   [Circle] cancel", y0 + 230, C_TEXT, C_PANEL);
+    put_center_rich(cx, "{cross} remove   {square} remove + files   {circle} cancel", y0 + 230, C_TEXT, C_PANEL);
 }
 
 static void draw_all()
@@ -429,18 +560,7 @@ static void draw_all()
 
         line += " | " + fmt_speed(g_status.totalSpeedKB);
 
-        // Справа красная кнопка выключения ps4torrentd (выбирается стрелкой вверх над первой строкой).
-        std::string btnText = fit(tr("btn_quit", "shut down"), 24);
-        int btnW = (count_cp(btnText) + 4) * g_cellW;
-        int btnH = 44;
-        int btnX = FRAME_WIDTH - MARGIN_X - btnW;
-        int btnY = statusBaseline - 30;
-        Color btnColor = g_focusQuit ? C_BTN_HI : C_BTN;
-        if (g_focusQuit) g_scene->FillRect(btnX - 4, btnY - 4, btnW + 8, btnH + 8, C_TEXT);   // белая рамка при выделении
-        g_scene->FillRect(btnX, btnY, btnW, btnH, btnColor);
-        draw_text(btnText, btnX + 2 * g_cellW, statusBaseline, C_TEXT, btnColor);
-
-        int maxChars = (btnX - statusX - 2 * g_cellW) / g_cellW;
+        int maxChars = (FRAME_WIDTH - MARGIN_X - statusX) / g_cellW;
         draw_text(fit(line, maxChars), statusX, statusBaseline, lineColor, C_BG);
     }
 
@@ -469,12 +589,11 @@ static void draw_all()
     static const int HINT_BASELINE   = FOOTER_Y + 25;         // 1025
     static const int CREDIT_BASELINE = HINT_BASELINE + 32;    // 1057: с запасом до низа экрана (1080)
 
-    put_center(FRAME_WIDTH / 2,
-               g_focusQuit ? "Cross - " + tr("btn_quit", "shut down") + "   Down - back to the list"
-                           : std::string("Up/Down - select   Cross - pause/resume   Triangle - remove"),
-               HINT_BASELINE, C_DIM, C_BG);
+    put_center_rich(FRAME_WIDTH / 2,
+                    "{updown} select   {cross} pause/resume   {triangle} remove   {options} " + tr("btn_quit", "shut down"),
+                    HINT_BASELINE, C_DIM, C_BG);
 
-    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.0.1 Created by SergioPoverony and Mr.Claude",
+    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.0.2 Created by SergioPoverony and Mr.Claude",
                CREDIT_BASELINE, C_DIMMER, C_BG);
 
     draw_modal();
@@ -606,6 +725,7 @@ void ui_pump()
     bool circle   = (pressed & ORBIS_PAD_BUTTON_CIRCLE) != 0;
     bool triangle = (pressed & ORBIS_PAD_BUTTON_TRIANGLE) != 0;
     bool square   = (pressed & ORBIS_PAD_BUTTON_SQUARE) != 0;
+    bool options  = (pressed & ORBIS_PAD_BUTTON_OPTIONS) != 0;
 
     static uint64_t upSince = 0, upLast = 0, downSince = 0, downLast = 0;
 
@@ -624,30 +744,19 @@ void ui_pump()
             g_redraw = 2;
         } else if (circle) { g_modal = MODAL_NONE; g_redraw = 2; }
     } else {
-        bool upStep   = step_repeat(up, upSince, upLast, now);
-        bool downStep = step_repeat(down, downSince, downLast, now);
+        if (options) {
+            g_modal = MODAL_QUIT;
+            g_redraw = 2;
+        } else if (n > 0) {
+            if (step_repeat(up, upSince, upLast, now) && g_sel > 0)           { g_sel--; g_redraw = 2; }
+            if (step_repeat(down, downSince, downLast, now) && g_sel + 1 < n) { g_sel++; g_redraw = 2; }
 
-        if (g_focusQuit) {
-            // Подсвечена красная кнопка выключения: вниз - обратно в список, Cross - окно подтверждения.
-            if (downStep) { g_focusQuit = false; g_redraw = 2; }
-            if (cross)    { g_modal = MODAL_QUIT; g_redraw = 2; }
-        } else {
-            // Вверх из первой строки (или при пустом списке) - на кнопку выключения.
-            if (upStep) {
-                if (g_sel > 0) g_sel--;
-                else           g_focusQuit = true;
+            if (cross) toggle_selected();
+            if (triangle) {
+                g_modalHash = g_status.items[g_sel].hash;
+                g_modalTitle = g_status.items[g_sel].title;
+                g_modal = MODAL_DELETE;
                 g_redraw = 2;
-            }
-            if (downStep && g_sel + 1 < n) { g_sel++; g_redraw = 2; }
-
-            if (n > 0) {
-                if (cross) toggle_selected();
-                if (triangle) {
-                    g_modalHash = g_status.items[g_sel].hash;
-                    g_modalTitle = g_status.items[g_sel].title;
-                    g_modal = MODAL_DELETE;
-                    g_redraw = 2;
-                }
             }
         }
     }
