@@ -102,4 +102,13 @@ bool api_delete(const std::string& hash, bool withFiles)
     return simple_cmd(path);
 }
 
+bool api_quit()
+{
+    HttpResult r = http_get(g_host, g_port, with_token("/quit"), TIMEOUT_MS);
+    if (!r.connected) { g_lastErr = "no connection to ps4torrentd"; return false; }
+    if (r.status != 200) { g_lastErr = "server returned status " + std::to_string(r.status); return false; }
+    logf_("api: /quit -> %s", r.body.c_str());   // ожидаем "bye"
+    return true;
+}
+
 std::string api_last_error() { return g_lastErr; }

@@ -9,6 +9,7 @@
 #include "app.h"
 #include "api.h"
 #include "ui.h"
+#include "i18n.h"
 
 // Системная заставка запуска (sce_sys/pic1.png) остаётся поверх приложения,
 // пока оно само её не уберёт. Вызываем после первого нарисованного кадра.
@@ -66,6 +67,7 @@ int main()
 
     if (!net_init()) logf_("net_init FAILED: the client will not be able to reach ps4torrentd");
 
+    i18n_init();
     ui_init();   // если экран не поднялся, приложение всё равно продолжает работать (видно по логу)
 
     bool splashHidden = false;

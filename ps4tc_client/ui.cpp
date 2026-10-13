@@ -4,6 +4,7 @@
 #include "scene.h"
 #include "image.h"
 #include "connstate.h"
+#include "i18n.h"
 #include "log.h"
 
 #include <stdio.h>
@@ -54,6 +55,7 @@ static const Color C_FILL   = { 81, 171, 236 };    // голубая залив�
 static const Color C_GREEN = { 110, 210, 130 };
 static const Color C_AMBER = { 235, 180,  80 };
 static const Color C_RED   = { 235, 100, 100 };
+static const Color C_BTN   = { 196,  52,  52 };    // красная кнопка выключения
 static const Color C_PANEL = { 40,  44,  56 };
 static const Color C_EDGE  = { 110, 120, 150 };
 
@@ -73,7 +75,7 @@ static bool     g_bannerOk = false;
 static int      g_bannerW  = 0;   // ширина на экране при высоте BANNER_H (с сохранением пропорций)
 static uint64_t g_lastRefresh = 0;
 
-enum Modal { MODAL_NONE, MODAL_DELETE };
+enum Modal { MODAL_NONE, MODAL_DELETE, MODAL_QUIT };
 static Modal        g_modal = MODAL_NONE;
 static std::string  g_modalHash;
 static std::string  g_modalTitle;
@@ -300,6 +302,35 @@ static void draw_row(int vis, int idx)
     if (fillW > 0) g_scene->FillRect(barX0, barY, fillW, BAR_H, C_FILL);
 }
 
+// Делит текст на строки: по \n и по словам, чтобы строка не длиннее maxChars символов.
+static std::vector<std::string> wrap_lines(const std::string& text, int maxChars)
+{
+    std::vector<std::string> out;
+    size_t pos = 0;
+    while (pos <= text.size()) {
+        size_t nl = text.find('\n', pos);
+        std::string para = text.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+        if (para.empty()) {
+            out.push_back("");
+        } else {
+            std::string line;
+            size_t i = 0;
+            while (i < para.size()) {
+                size_t sp = para.find(' ', i);
+                std::string word = para.substr(i, sp == std::string::npos ? std::string::npos : sp - i);
+                i = (sp == std::string::npos) ? para.size() : sp + 1;
+                if (word.empty()) continue;
+                if (!line.empty() && count_cp(line) + 1 + count_cp(word) > maxChars) { out.push_back(line); line.clear(); }
+                line += (line.empty() ? "" : " ") + word;
+            }
+            if (!line.empty()) out.push_back(line);
+        }
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+    }
+    return out;
+}
+
 static void draw_panel(int w, int h)
 {
     int x = (FRAME_WIDTH - w) / 2;
@@ -308,8 +339,30 @@ static void draw_panel(int w, int h)
     g_scene->FillRect(x, y, w, h, C_PANEL);
 }
 
+static void draw_quit_modal()
+{
+    const int W = 1200;
+    int maxChars = (W - 100) / g_cellW;
+    std::vector<std::string> lines = wrap_lines(tr("quit_confirm",
+        "Shut down ps4torrent?\n\nAll downloads will stop (progress is saved). "
+        "To start it again, send the payload to the console again."), maxChars);
+
+    const int LINE_H = 34;
+    int H = 70 + 20 + (int)lines.size() * LINE_H + 40 + 50;
+    draw_panel(W, H);
+    int cx = FRAME_WIDTH / 2;
+    int y0 = (FRAME_HEIGHT - H) / 2;
+
+    put_center(cx, fit(tr("quit_title", "Shut down ps4torrent"), maxChars), y0 + 50, C_RED, C_PANEL);
+    int y = y0 + 70 + 20 + 26;
+    for (size_t i = 0; i < lines.size(); i++, y += LINE_H)
+        put_center(cx, lines[i], y, C_TEXT, C_PANEL);
+    put_center(cx, "[Cross] " + tr("btn_quit", "shut down") + "   [Circle] cancel", y0 + H - 36, C_AMBER, C_PANEL);
+}
+
 static void draw_modal()
 {
+    if (g_modal == MODAL_QUIT) { draw_quit_modal(); return; }
     if (g_modal != MODAL_DELETE) return;
 
     const int W = 1200, H = 300;
@@ -372,12 +425,19 @@ static void draw_all()
             line += fmt_size(d.freeBytes) + " free";
         }
 
-        char stats[120];
-        snprintf(stats, sizeof(stats), " | %s | %u peers | %d parallel",
-                 fmt_speed(g_status.totalSpeedKB).c_str(), g_status.incoming, g_status.maxParallel);
-        line += stats;
+        line += " | " + fmt_speed(g_status.totalSpeedKB);
 
-        draw_text(fit(line, 95), statusX, statusBaseline, lineColor, C_BG);
+        // Справа красная кнопка выключения ps4torrentd (на геймпаде - Options).
+        std::string btnText = fit(tr("btn_quit", "shut down"), 24);
+        int btnW = (count_cp(btnText) + 4) * g_cellW;
+        int btnH = 44;
+        int btnX = FRAME_WIDTH - MARGIN_X - btnW;
+        int btnY = statusBaseline - 30;
+        g_scene->FillRect(btnX, btnY, btnW, btnH, C_BTN);
+        draw_text(btnText, btnX + 2 * g_cellW, statusBaseline, C_TEXT, C_BTN);
+
+        int maxChars = (btnX - statusX - 2 * g_cellW) / g_cellW;
+        draw_text(fit(line, maxChars), statusX, statusBaseline, lineColor, C_BG);
     }
 
     g_scene->FillRect(0, HEADER_Y, FRAME_WIDTH, ROW_H, C_HEAD);
@@ -405,10 +465,10 @@ static void draw_all()
     static const int HINT_BASELINE   = FOOTER_Y + 25;         // 1025
     static const int CREDIT_BASELINE = HINT_BASELINE + 32;    // 1057: с запасом до низа экрана (1080)
 
-    put_center(FRAME_WIDTH / 2, "Up/Down - select   Cross - pause/resume   Triangle - remove",
+    put_center(FRAME_WIDTH / 2, "Up/Down - select   Cross - pause/resume   Triangle - remove   Options - " + tr("btn_quit", "shut down"),
                HINT_BASELINE, C_DIM, C_BG);
 
-    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.5.2.4 Created by SergioPoverony and Mr.Claude",
+    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.0.0 Created by SergioPoverony and Mr.Claude",
                CREDIT_BASELINE, C_DIMMER, C_BG);
 
     draw_modal();
@@ -525,6 +585,7 @@ void ui_pump()
     if (now - g_lastRefresh >= 1000000) {
         g_lastRefresh = now;
         refresh_status();
+        i18n_tick(g_status.ok, now);
         g_redraw = 2;
     }
 
@@ -539,6 +600,7 @@ void ui_pump()
     bool circle   = (pressed & ORBIS_PAD_BUTTON_CIRCLE) != 0;
     bool triangle = (pressed & ORBIS_PAD_BUTTON_TRIANGLE) != 0;
     bool square   = (pressed & ORBIS_PAD_BUTTON_SQUARE) != 0;
+    bool options  = (pressed & ORBIS_PAD_BUTTON_OPTIONS) != 0;
 
     static uint64_t upSince = 0, upLast = 0, downSince = 0, downLast = 0;
 
@@ -549,6 +611,16 @@ void ui_pump()
         if (cross)       { api_delete(g_modalHash, false); refresh_status(); g_modal = MODAL_NONE; g_redraw = 2; }
         else if (square)  { api_delete(g_modalHash, true);  refresh_status(); g_modal = MODAL_NONE; g_redraw = 2; }
         else if (circle)  { g_modal = MODAL_NONE; g_redraw = 2; }
+    } else if (g_modal == MODAL_QUIT) {
+        upSince = downSince = 0;
+        if (cross) {
+            api_quit();            // демон сохраняет прогресс и завершается; дальше шапка покажет NO PAYLOAD
+            g_modal = MODAL_NONE;
+            g_redraw = 2;
+        } else if (circle) { g_modal = MODAL_NONE; g_redraw = 2; }
+    } else if (options) {
+        g_modal = MODAL_QUIT;
+        g_redraw = 2;
     } else if (n > 0) {
         if (step_repeat(up, upSince, upLast, now) && g_sel > 0)           { g_sel--; g_redraw = 2; }
         if (step_repeat(down, downSince, downLast, now) && g_sel + 1 < n) { g_sel++; g_redraw = 2; }
