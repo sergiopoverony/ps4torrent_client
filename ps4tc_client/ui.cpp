@@ -56,6 +56,7 @@ static const Color C_GREEN = { 110, 210, 130 };
 static const Color C_AMBER = { 235, 180,  80 };
 static const Color C_RED   = { 235, 100, 100 };
 static const Color C_BTN   = { 196,  52,  52 };    // красная кнопка выключения
+static const Color C_BTN_HI = { 235,  70,  70 };   // кнопка выключения, когда выделена
 static const Color C_PANEL = { 40,  44,  56 };
 static const Color C_EDGE  = { 110, 120, 150 };
 
@@ -66,6 +67,7 @@ static bool     g_ready = false;
 static bool     g_padOk = false;
 
 static int      g_sel = 0;
+static bool     g_focusQuit = false;   // выделена красная кнопка выключения в шапке
 static int      g_top = 0;
 static int      g_redraw = 2;
 static int      g_frameID = 0;
@@ -259,7 +261,7 @@ static Color status_color(const std::string& s)
 static void draw_row(int vis, int idx)
 {
     const Item& it = g_status.items[idx];
-    bool selected = (idx == g_sel);
+    bool selected = (idx == g_sel) && !g_focusQuit;
     int top = ROWS_Y + vis * ROW_H;
     Color bg = selected ? C_SEL : ((idx % 2) ? C_ROW2 : C_BG);
     g_scene->FillRect(0, top, FRAME_WIDTH, ROW_H, bg);
@@ -427,14 +429,16 @@ static void draw_all()
 
         line += " | " + fmt_speed(g_status.totalSpeedKB);
 
-        // Справа красная кнопка выключения ps4torrentd (на геймпаде - Options).
+        // Справа красная кнопка выключения ps4torrentd (выбирается стрелкой вверх над первой строкой).
         std::string btnText = fit(tr("btn_quit", "shut down"), 24);
         int btnW = (count_cp(btnText) + 4) * g_cellW;
         int btnH = 44;
         int btnX = FRAME_WIDTH - MARGIN_X - btnW;
         int btnY = statusBaseline - 30;
-        g_scene->FillRect(btnX, btnY, btnW, btnH, C_BTN);
-        draw_text(btnText, btnX + 2 * g_cellW, statusBaseline, C_TEXT, C_BTN);
+        Color btnColor = g_focusQuit ? C_BTN_HI : C_BTN;
+        if (g_focusQuit) g_scene->FillRect(btnX - 4, btnY - 4, btnW + 8, btnH + 8, C_TEXT);   // белая рамка при выделении
+        g_scene->FillRect(btnX, btnY, btnW, btnH, btnColor);
+        draw_text(btnText, btnX + 2 * g_cellW, statusBaseline, C_TEXT, btnColor);
 
         int maxChars = (btnX - statusX - 2 * g_cellW) / g_cellW;
         draw_text(fit(line, maxChars), statusX, statusBaseline, lineColor, C_BG);
@@ -465,10 +469,12 @@ static void draw_all()
     static const int HINT_BASELINE   = FOOTER_Y + 25;         // 1025
     static const int CREDIT_BASELINE = HINT_BASELINE + 32;    // 1057: с запасом до низа экрана (1080)
 
-    put_center(FRAME_WIDTH / 2, "Up/Down - select   Cross - pause/resume   Triangle - remove   Options - " + tr("btn_quit", "shut down"),
+    put_center(FRAME_WIDTH / 2,
+               g_focusQuit ? "Cross - " + tr("btn_quit", "shut down") + "   Down - back to the list"
+                           : std::string("Up/Down - select   Cross - pause/resume   Triangle - remove"),
                HINT_BASELINE, C_DIM, C_BG);
 
-    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.0.0 Created by SergioPoverony and Mr.Claude",
+    put_center(FRAME_WIDTH / 2, "ps4torrent client v1.6.0.1 Created by SergioPoverony and Mr.Claude",
                CREDIT_BASELINE, C_DIMMER, C_BG);
 
     draw_modal();
@@ -600,7 +606,6 @@ void ui_pump()
     bool circle   = (pressed & ORBIS_PAD_BUTTON_CIRCLE) != 0;
     bool triangle = (pressed & ORBIS_PAD_BUTTON_TRIANGLE) != 0;
     bool square   = (pressed & ORBIS_PAD_BUTTON_SQUARE) != 0;
-    bool options  = (pressed & ORBIS_PAD_BUTTON_OPTIONS) != 0;
 
     static uint64_t upSince = 0, upLast = 0, downSince = 0, downLast = 0;
 
@@ -618,19 +623,32 @@ void ui_pump()
             g_modal = MODAL_NONE;
             g_redraw = 2;
         } else if (circle) { g_modal = MODAL_NONE; g_redraw = 2; }
-    } else if (options) {
-        g_modal = MODAL_QUIT;
-        g_redraw = 2;
-    } else if (n > 0) {
-        if (step_repeat(up, upSince, upLast, now) && g_sel > 0)           { g_sel--; g_redraw = 2; }
-        if (step_repeat(down, downSince, downLast, now) && g_sel + 1 < n) { g_sel++; g_redraw = 2; }
+    } else {
+        bool upStep   = step_repeat(up, upSince, upLast, now);
+        bool downStep = step_repeat(down, downSince, downLast, now);
 
-        if (cross) toggle_selected();
-        if (triangle) {
-            g_modalHash = g_status.items[g_sel].hash;
-            g_modalTitle = g_status.items[g_sel].title;
-            g_modal = MODAL_DELETE;
-            g_redraw = 2;
+        if (g_focusQuit) {
+            // Подсвечена красная кнопка выключения: вниз - обратно в список, Cross - окно подтверждения.
+            if (downStep) { g_focusQuit = false; g_redraw = 2; }
+            if (cross)    { g_modal = MODAL_QUIT; g_redraw = 2; }
+        } else {
+            // Вверх из первой строки (или при пустом списке) - на кнопку выключения.
+            if (upStep) {
+                if (g_sel > 0) g_sel--;
+                else           g_focusQuit = true;
+                g_redraw = 2;
+            }
+            if (downStep && g_sel + 1 < n) { g_sel++; g_redraw = 2; }
+
+            if (n > 0) {
+                if (cross) toggle_selected();
+                if (triangle) {
+                    g_modalHash = g_status.items[g_sel].hash;
+                    g_modalTitle = g_status.items[g_sel].title;
+                    g_modal = MODAL_DELETE;
+                    g_redraw = 2;
+                }
+            }
         }
     }
 
